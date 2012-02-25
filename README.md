@@ -1,7 +1,7 @@
 # Radix Tree and URL Tree
 
 ## Install
-    git clone ...
+    git clone git://github.com/rflynn/radixtree.git
     cd radixtree
     python setup.py build
     python setup.py test
