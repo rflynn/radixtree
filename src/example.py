@@ -10,6 +10,3 @@ r.insert('baz')
 
 print r
 
-RadixTree.test()
-URLTree.test()
-
