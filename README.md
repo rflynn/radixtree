@@ -1,6 +1,6 @@
 # Radix Tree and URL Tree
 
-## Install
+### Install
 ```sh
 git clone git://github.com/rflynn/radixtree.git
 cd radixtree
@@ -14,7 +14,7 @@ A radix tree is a space-optimized trie where nodes are merged
 with single child nodes, greatly reducing memory usage and
 lookup time for datasets with significant overlap.
 
-## Example
+### Example
 ```python
 from radixtree import RadixTree
 r = RadixTree()
