@@ -20,6 +20,8 @@ class RadixTree():
     def __eq__(self, other):
         return self._data == other._data
 
+    # TODO: add __iter__ over all strings
+
     def insert(self, word):
         node = self._data
         while word:
