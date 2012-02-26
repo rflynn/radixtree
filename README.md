@@ -24,5 +24,6 @@ print r
 ```
 
 ## References
-http://en.wikipedia.org/wiki/Radix_tree
+1. http://en.wikipedia.org/wiki/Radix_tree
+2. http://en.wikipedia.org/wiki/Directed_acyclic_word_graph
 
