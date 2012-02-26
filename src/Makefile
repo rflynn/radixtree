@@ -1,7 +1,7 @@
-PYTHON=$(/usr/bin/env python)
+PYTHON=python
 
 test: FORCE
 	$(PYTHON) test.py
 
-FORCE
+FORCE:
 
