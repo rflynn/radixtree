@@ -32,9 +32,10 @@ typedef struct
 
 static int str_cmp(const str *a, const str *b)
 {
-    if (a->len != b->len)
-        return a->len > b->len ? 1 : -1;
-    return memcmp(a->s, b->s, a->len);
+    int cmp = memcmp(a->s, b->s, min(a->len, b->len));
+    if (cmp)
+        return cmp;
+    return (a->len > b->len) - (a->len < b->len);
 }
 
 /*
@@ -58,6 +59,8 @@ static size_t longest_prefix(
     node *candidates,
     node **longest)
 {
+    printf("%s word=%.*s candidates=%p\n",
+        __func__, (unsigned)word->len, word->s, candidates);
     if (word->len)
     {
         const char wc = *word->s;
@@ -136,17 +139,29 @@ static node * node_set(node **n, str *key, node *val)
     } else {
         node *v = node_get(*n, key);
         if (!v) {
-            printf("%s:%u *n=%p !v\n", __func__, __LINE__, *n);
+            node *prev = 0;
+            printf("%s:%u *n=%p !v key=%.*s\n",
+                __func__, __LINE__, *n, (unsigned)key->len, key->s);
             v = node_new(key, val);
             while (str_cmp(key, &(*n)->key) > 0)
             {
                 if ((*n)->next)
-                    *n = (*n)->next;
+                    prev = *n, *n = (*n)->next;
                 else
                     break;
             }
-            v->next = (*n)->next;
-            (*n)->next = v;
+            if (prev)
+                v->next = prev->next, prev->next = v;
+            else {
+                //FIXME: this is required for correct sorting by ascending
+                //order, but it doesn't work. I don't know why.
+                printf("$$$$$ *n=%p (*n)->next=%p v=%p v->next=%p\n",
+                    *n, (*n)->next, v, v->next);
+                //node tmp = **n;
+                //**n = *v;
+                //*v = tmp;
+                v->next = (*n)->next, (*n)->next = v;
+            }
         }
         return v;
     }
@@ -249,13 +264,7 @@ void radixtree_fini(radixtree *r)
 
 size_t radixtree_to_str(const radixtree *r, char *buf, size_t len)
 {
-    size_t olen = len;
-    if (r->root && !r->root->key.len)
-        *buf++ = '(', len--;
-    len -= node_to_str(r->root, buf, len);
-    if (r->root && !r->root->key.len)
-        *buf++ = ')', len--;
-    return olen - len;
+    return node_to_str(r->root, buf, len);
 }
 
 int radixtree_add(radixtree *r, const char *s, size_t len)
@@ -282,16 +291,16 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
                 prefix->key.len - lp,
                 prefix->key.s + lp
             };
-            prefix->key.len = lp;
-            curr = node_set(&prefix->val, &keysuf, 0);
+            node *v = prefix->val;
+            prefix->val = 0;                            /* del node[key] */
+            curr = node_set(&prefix->val, &keysuf, v);  /* node[prefix] = {keysuf:nk} */
+            prefix->key.len = lp;                       
             printf("suffix split: keysuf=%.*s\n",
                 (unsigned)keysuf.len, keysuf.s);
-                node_dump(r->root, stdout, 0);
-        } else {
-            curr = prefix;
-            printf("exact match, curr=%p\n", curr);
+            node_dump(r->root, stdout, 1);
         }
-        word.s += lp, word.len -= lp;
+        word.s += lp, word.len -= lp;                   /* word = word[lp:] */
+        curr = prefix->val;
         printf("prefix loop curr=%p\n", curr);
         consumed += lp;
     }
@@ -300,32 +309,24 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
         curr, (unsigned)word.len, word.s, consumed, lp);
     node_dump(r->root, stdout, 1);
 
+    /* umatched leftovers */
+    curr = node_set(&curr, &word, 0);
+
+    if (!r->root)
+        r->root = curr;
+
+    /* if leftover !=, end of string */
     if (word.len)
     {
-        /* rest of unmatched string */
-        curr = node_set(curr ? &curr->val : &r->root, &word, 0);
-        //consumed = len;
         word.len = 0;
+        curr = node_set(&curr->val, &word, 0);
     }
 
-    printf("post-word.len:\n");
-    node_dump(r->root, stdout, 1);
+    if (!r->root)
+        r->root = curr;
 
-    /* mark end of string */
-    printf("eos r->root=%p curr=%p\n", r->root, curr);
-    curr = node_set(
-        curr ? &curr->val : &r->root,
-            &word, 0);
-#if 0
-    curr = node_set(
-        curr ? consumed < len ? &curr->val : &curr : &r->root,
-            &word, 0);
-#endif
-
-    printf("done:\n");
-    node_dump(r->root, stdout, 1);
-    printf("curr: ");
-    node_dump(curr, stdout, 1);
+    printf("done:\n"); node_dump(r->root, stdout, 1);
+    printf("curr:\n"); node_dump(curr, stdout, 1);
 
     assert(r->root);
     //assert(consumed == len);
@@ -353,14 +354,14 @@ static const char * test_empty_string(radixtree *t)
     return "()";
 }
 
-static const char * test_prefix_first(radixtree *t)
+static const char * test_hellhello(radixtree *t)
 {
     radixtree_add(t, "hell", 4);
     radixtree_add(t, "hello", 5);
     return "hell(,o())";
 }
 
-static const char * test_prefix_last(radixtree *t)
+static const char * test_hellohell(radixtree *t)
 {
     radixtree_add(t, "hello", 5);
     radixtree_add(t, "hell", 4);
@@ -442,9 +443,9 @@ static const struct unittest {
     { TESTLIST(test_empty_string) },
     { TESTLIST(test_add)          },
     { TESTLIST(test_dupe)         },
-    { TESTLIST(test_prefix_first) },
+    { TESTLIST(test_hellhello)    },
   //{ TESTLIST(test_hellheck)     },
-    { TESTLIST(test_prefix_last)  },
+    { TESTLIST(test_hellohell)    },
     { TESTLIST(test_2neighbors)   },
     { TESTLIST(test_3neighbors)   },
     { TESTLIST(test_hehellhello)  },
@@ -469,7 +470,7 @@ int main(void)
         fflush(stdout);
         radixtree_init(&t);
         expected = test->func(&t);
-        node_dump(t.root, stdout, 0);
+        printf("after test:\n"); node_dump(t.root, stdout, 0);
         radixtree_to_str(&t, buf, sizeof buf);
         if (!strcmp(buf, expected)) {
             puts("ok");
