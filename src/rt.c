@@ -126,6 +126,9 @@ static node * node_get(node *n, const str *key)
     return 0;
 }
 
+/*
+ * insert a new node in (*n)->next chain in ascending order.
+ */
 static node * node_set(node **n, str *key, node *val)
 {
     if (!*n)
@@ -134,14 +137,13 @@ static node * node_set(node **n, str *key, node *val)
         *n = node_new(key, val);
         return *n;
     } else {
-        /* 1+ elements exist */
+        /* 1+ elements */
         node *v = node_get(*n, key);
         if (!v) {
             node *prev = 0;
-            printf("%s:%u *n=%p !v key=%.*s\n",
-                __func__, __LINE__, *n, (unsigned)key->len, key->s);
+            int cmp;
             v = node_new(key, val);
-            while (str_cmp(key, &(*n)->key) > 0)
+            while ((cmp = str_cmp(key, &(*n)->key)) > 0)
             {
                 if ((*n)->next)
                     prev = *n, *n = (*n)->next;
@@ -151,13 +153,11 @@ static node * node_set(node **n, str *key, node *val)
             if (prev) {
                 /* v > 1+ elements; attach after 'prev' */
                 v->next = prev->next, prev->next = v;
-            } else if (str_cmp(key, &(*n)->key) > 0) {
+            } else if (cmp > 0) {
                 /* v > first element */
                 v->next = (*n)->next, (*n)->next = v;
             } else {
-                /* v < first element; swap */
-                printf("$$$$$ *n=%p (*n)->next=%p v=%p v->next=%p\n",
-                    *n, (*n)->next, v, v->next);
+                /* v < first element; copy/swap */
                 node tmp = **n;
                 **n = *v;
                 *v = tmp;
