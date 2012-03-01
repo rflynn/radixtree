@@ -62,13 +62,16 @@ static size_t longest_prefix(
     node *candidates,
     node **longest)
 {
-    //printf("%s word=%.*s candidates=%p\n",
-        //__func__, (unsigned)word->len, word->s, candidates);
     if (word->len)
     {
         const char wc = *word->s;
         for (node *c = candidates; c; c = c->next)
         {
+            /*
+             * at each level only at most a single node can match
+             * TODO: this can be optimized to ignore length and take advantage
+             * of the sorted node order
+             */
             if (c->key.len && *c->key.s == wc)
             {
                 *longest = c;
@@ -89,9 +92,7 @@ static void str_init(str *s, const char *c, size_t len)
 
 static void node_init(node *n, str *key, node *val)
 {
-    n->key.s = malloc(key->len);
-    memcpy((char *)n->key.s, key->s, key->len);
-    n->key.len = key->len;
+    str_init(&n->key, key->s, key->len);
     n->val = val;
     n->next = 0;
 }
@@ -108,7 +109,7 @@ static void node_free(node *n)
     free(n);
 }
 
-static node * node_get(node *n, const str *key)
+static inline node * node_get(node *n, const str *key)
 {
     for (; n; n = n->next)
     {
@@ -190,24 +191,18 @@ static size_t node_to_str(const node *n, char *buf, size_t len)
     size_t olen = len;
     while (n)
     {
-        if (0 && !n->key.len) {
+        int used = snprintf(buf, len, "%.*s",
+            (unsigned)n->key.len, n->key.s);
+        if (used > 0)
+            buf += used, len -= used;
+        if (n->val)
+        {
+            size_t consumed;
             *buf++ = '(', len--;
+            consumed = node_to_str(n->val, buf, len);
+            buf += consumed, len -= consumed;
             *buf++ = ')', len--;
             *buf = '\0';
-        } else {
-            int used = snprintf(buf, len, "%.*s",
-                (unsigned)n->key.len, n->key.s);
-            if (used > 0)
-                buf += used, len -= used;
-            if (n->val)
-            {
-                size_t consumed;
-                *buf++ = '(', len--;
-                consumed = node_to_str(n->val, buf, len);
-                buf += consumed, len -= consumed;
-                *buf++ = ')', len--;
-                *buf = '\0';
-            }
         }
         n = n->next;
         if (n) {
@@ -355,6 +350,13 @@ static const char * test_dupe(radixtree *t)
 {
     radixtree_add(t, "hello", 5);
     radixtree_add(t, "hello", 5);
+    assert( radixtree_exists(t, "hello", 5));
+    assert(!radixtree_exists(t, "", 0));
+    assert(!radixtree_exists(t, "h", 1));
+    assert(!radixtree_exists(t, "he", 2));
+    assert(!radixtree_exists(t, "hel", 3));
+    assert(!radixtree_exists(t, "hell", 4));
+    assert(!radixtree_exists(t, "hello there", 11));
     return "hello()";
 }
 
@@ -433,9 +435,11 @@ static const char * test_urls(radixtree *t)
         "http://foo/bar",
         "http://baz",
         0
-    }, **url = urls;
-    for (; *url; url++)
+    }, **url;
+    for (url = urls; *url; url++)
         radixtree_add(t, *url, strlen(*url));
+    for (url = urls; *url; url++)
+        assert(radixtree_exists(t, *url, strlen(*url)));
     return "http://(baz(),foo(,/bar()))";
 }
 
@@ -476,7 +480,6 @@ int main(void)
         fflush(stdout);
         radixtree_init(&t);
         expected = test->func(&t);
-        //printf("after test:\n"); node_dump(t.root, stdout, 0);
         radixtree_to_str(&t, buf, sizeof buf);
         if (!strcmp(buf, expected)) {
             puts("ok");
