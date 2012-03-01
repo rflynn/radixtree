@@ -62,8 +62,8 @@ static size_t longest_prefix(
     node *candidates,
     node **longest)
 {
-    printf("%s word=%.*s candidates=%p\n",
-        __func__, (unsigned)word->len, word->s, candidates);
+    //printf("%s word=%.*s candidates=%p\n",
+        //__func__, (unsigned)word->len, word->s, candidates);
     if (word->len)
     {
         const char wc = *word->s;
@@ -110,19 +110,11 @@ static void node_free(node *n)
 
 static node * node_get(node *n, const str *key)
 {
-    printf("%s n=%p key=%.*s\n",
-        __func__,  n, (unsigned)key->len, key->s);
     for (; n; n = n->next)
     {
-        printf("%s n->key=%.*s key=%.*s strcmp(n->key, key)=%d\n",
-            __func__,
-            (unsigned)n->key.len, n->key.s,
-            (unsigned)key->len, key->s,
-            str_cmp(&n->key, key));
         if (!str_cmp(&n->key, key))
             return n;
     }
-    printf("%s done.\n", __func__);
     return 0;
 }
 
@@ -480,11 +472,11 @@ int main(void)
         static char buf[1024];
         radixtree t;
         const char *expected;
-        printf("\n=> %s\n", test->name);
+        printf("%s ", test->name);
         fflush(stdout);
         radixtree_init(&t);
         expected = test->func(&t);
-        printf("after test:\n"); node_dump(t.root, stdout, 0);
+        //printf("after test:\n"); node_dump(t.root, stdout, 0);
         radixtree_to_str(&t, buf, sizeof buf);
         if (!strcmp(buf, expected)) {
             puts("ok");
