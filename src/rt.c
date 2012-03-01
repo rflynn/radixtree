@@ -1,6 +1,9 @@
 /* ex: set ts=4 et: */
 /*
+ * Radix Tree
  *
+ * Compress in-memory representation of strings sharing common prefix
+ * and content.
  */
 
 #include <stdio.h>
@@ -84,13 +87,6 @@ static void str_init(str *s, const char *c, size_t len)
     s->len = len;
 }
 
-static str * str_new(const char *c, size_t len)
-{
-    str *s = malloc(sizeof *s);
-    str_init(s, c, len);
-    return s;
-}
-
 static void node_init(node *n, str *key, node *val)
 {
     n->key.s = malloc(key->len);
@@ -134,9 +130,11 @@ static node * node_set(node **n, str *key, node *val)
 {
     if (!*n)
     {
+        /* zero elements */
         *n = node_new(key, val);
         return *n;
     } else {
+        /* 1+ elements exist */
         node *v = node_get(*n, key);
         if (!v) {
             node *prev = 0;
@@ -150,17 +148,21 @@ static node * node_set(node **n, str *key, node *val)
                 else
                     break;
             }
-            if (prev)
+            if (prev) {
+                /* v > 1+ elements; attach after 'prev' */
                 v->next = prev->next, prev->next = v;
-            else {
-                //FIXME: this is required for correct sorting by ascending
-                //order, but it doesn't work. I don't know why.
+            } else if (str_cmp(key, &(*n)->key) > 0) {
+                /* v > first element */
+                v->next = (*n)->next, (*n)->next = v;
+            } else {
+                /* v < first element; swap */
                 printf("$$$$$ *n=%p (*n)->next=%p v=%p v->next=%p\n",
                     *n, (*n)->next, v, v->next);
-                //node tmp = **n;
-                //**n = *v;
-                //*v = tmp;
-                v->next = (*n)->next, (*n)->next = v;
+                node tmp = **n;
+                **n = *v;
+                *v = tmp;
+                (*n)->next = v;
+                return *n;
             }
         }
         return v;
@@ -272,6 +274,7 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
     str word;
     node *curr = r->root;
     size_t consumed = 0, lp = 0;
+
     str_init(&word, s, len);
     printf("radixtree_insert(%.*s):\n", (unsigned)len, s);
     node_dump(r->root, stdout, 1);
@@ -329,10 +332,36 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
     printf("curr:\n"); node_dump(curr, stdout, 1);
 
     assert(r->root);
-    //assert(consumed == len);
     assert(curr);
 
     return 1;
+}
+
+/*
+ * once a radixtree is built, if one will not do any further additions there
+ * are some performance improvements that can be made:
+ *
+ * * reduce memory by replacing empty end-of-string nodes with no ->next or
+ *   ->child links with a pointer to a single EOS node
+ * * improve locality of reference by moving adjacent nodes to adjacent memory
+ * * we could go even farther and convert each level to an array; replacing N
+ *   ->next pointers with a single count, though naturally we'd need a separate
+ *   search method
+ *
+ */
+static void radixtree_finalize(radixtree *r)
+{
+    /* TODO */
+    r = r;
+}
+
+
+/* * * tests * * */
+
+static const char * test_empty_string(radixtree *t)
+{
+    radixtree_add(t, "", 0);
+    return "";
 }
 
 static const char * test_add(radixtree *t)
@@ -346,12 +375,6 @@ static const char * test_dupe(radixtree *t)
     radixtree_add(t, "hello", 5);
     radixtree_add(t, "hello", 5);
     return "hello()";
-}
-
-static const char * test_empty_string(radixtree *t)
-{
-    radixtree_add(t, "", 0);
-    return "()";
 }
 
 static const char * test_hellhello(radixtree *t)
@@ -440,11 +463,11 @@ static const struct unittest {
     const char * (*func)(radixtree *);
 } Tests[] = {
 #define TESTLIST(f) #f, f
+    { TESTLIST(test_hellheck)     },
     { TESTLIST(test_empty_string) },
     { TESTLIST(test_add)          },
     { TESTLIST(test_dupe)         },
     { TESTLIST(test_hellhello)    },
-  //{ TESTLIST(test_hellheck)     },
     { TESTLIST(test_hellohell)    },
     { TESTLIST(test_2neighbors)   },
     { TESTLIST(test_3neighbors)   },
@@ -452,7 +475,7 @@ static const struct unittest {
     { TESTLIST(test_hellohellhe)  },
     { TESTLIST(test_hellhehello)  },
     { TESTLIST(test_hellhellohe)  },
-  //{ TESTLIST(test_urls)         },
+    { TESTLIST(test_urls)         },
     { 0, 0                        },
 #undef TESTLIST
 };
@@ -461,6 +484,8 @@ int main(void)
 {
     const struct unittest *test = Tests;
     unsigned passcnt = 0;
+    printf("sizeof(str)=%zu sizeof(node)=%zu\n",
+        sizeof(str), sizeof(node));
     while (test->func)
     {
         static char buf[1024];
