@@ -31,6 +31,8 @@ typedef struct
     node *root;
 } radixtree;
 
+typedef radixtree frozenradixtree;
+
 #define min(x,y) ((x) < (y) ? (x) : (y))
 
 static int str_cmp(const str *a, const str *b)
@@ -314,6 +316,91 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
 }
 
 /*
+ * does s[0..len] exist in r?
+ */
+int radixtree_exists(radixtree *r, const char *s, size_t len)
+{
+    str word;
+    node *curr = r->root;
+
+    str_init(&word, s, len);
+
+    while (word.len)
+    {
+        node *prefix;
+        size_t lp;
+
+        lp = longest_prefix(&word, curr, &prefix);
+        /* no match or incomplete match */
+        if (!lp || lp != prefix->key.len)
+            return 0;
+        word.s += lp, word.len -= lp;
+        curr = prefix->val;
+    }
+
+    /* match EOS */
+    curr = node_get(curr, &word);
+
+    return !!curr;
+}
+
+
+struct radixtree_stats
+{
+    size_t nodecnt;
+    size_t eos_cnt;
+    size_t stringbytes;
+    size_t childcnt;
+    node *node_ptr_lo;
+    node *node_ptr_hi;
+};
+
+static void radixtree_stats_init(struct radixtree_stats *stats)
+{
+    stats->nodecnt = 0;
+    stats->eos_cnt = 0;
+    stats->stringbytes = 0;
+    stats->childcnt = 0;
+    stats->node_ptr_lo = 0;
+    stats->node_ptr_hi = 0;
+}
+
+static void radixtree_stats_dump(const struct radixtree_stats *stats)
+{
+    printf("nodecnt=%zu eos_cnt=%zu stringbytes=%zu childcnt=%zu node_lo=%p node_hi=%p node_diff=%zu\n",
+        stats->nodecnt, stats->eos_cnt, stats->stringbytes, stats->childcnt,
+        stats->node_ptr_lo, stats->node_ptr_hi,
+        (size_t)(stats->node_ptr_hi - stats->node_ptr_lo));
+}
+
+static void radixnode_stats(node *n, struct radixtree_stats *stats)
+{
+    stats->childcnt++;
+    for (; n; n = n->next)
+    {
+        stats->nodecnt++;
+        if (!n->key.len)
+            stats->eos_cnt++;
+        stats->stringbytes += n->key.len;
+        if (n < stats->node_ptr_lo)
+            stats->node_ptr_lo = n;
+        else if (n > stats->node_ptr_hi)
+            stats->node_ptr_hi = n;
+        if (n->val)
+            radixnode_stats(n->val, stats);
+    }
+}
+
+static void radixtree_stats(radixtree *r, struct radixtree_stats *stats)
+{
+    radixtree_stats_init(stats);
+    stats->node_ptr_lo = r->root;
+    stats->node_ptr_hi = r->root;
+    if (r->root)
+        radixnode_stats(r->root, stats);
+}
+
+/*
  * once a radixtree is built, if one will not do any further additions there
  * are some performance improvements that can be made:
  *
@@ -325,12 +412,17 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
  *   search method
  *
  */
-static void radixtree_finalize(radixtree *r)
+static void radixtree_finalize(radixtree *r, frozenradixtree *f)
 {
     /* TODO */
     r = r;
+    f = f;
 }
 
+static void frozenradixtree_dump(frozenradixtree *f)
+{
+    f = f;
+}
 
 /* * * tests * * */
 
@@ -476,6 +568,7 @@ int main(void)
         static char buf[1024];
         radixtree t;
         const char *expected;
+        struct radixtree_stats stats;
         printf("%s ", test->name);
         fflush(stdout);
         radixtree_init(&t);
@@ -487,6 +580,9 @@ int main(void)
         } else {
             printf("!!!!!!!!!!! expected:%s got:%s\n", expected, buf);
         }
+        node_dump(t.root, stdout, 0);
+        radixtree_stats(&t, &stats);
+        radixtree_stats_dump(&stats);
         radixtree_fini(&t);
         test++;
     }
