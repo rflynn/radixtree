@@ -269,48 +269,43 @@ size_t radixtree_to_str(const radixtree *r, char *buf, size_t len)
     return node_to_str(r->root, buf, len);
 }
 
+/*
+ * add string s[0..len] to radixtree
+ * match string prefix against existing nodes.
+ * at each level 'curr' if we find a 1+ char shared prefix between any
+ * existing node and the remaining s[..], split that node and consume
+ * that prefix from s[..]
+ */
 int radixtree_add(radixtree *r, const char *s, size_t len)
 {
     str word;
     node *curr = r->root;
-    size_t consumed = 0, lp = 0;
 
     str_init(&word, s, len);
-    printf("radixtree_insert(%.*s):\n", (unsigned)len, s);
-    node_dump(r->root, stdout, 1);
 
-    while (consumed < len)
+    while (word.len)
     {
         node *prefix;
+        size_t lp;
+
         lp = longest_prefix(&word, curr, &prefix);
         if (!prefix)
             break;
-        printf("   prefix(%p).str=%.*s\n",
-            prefix, (unsigned)prefix->key.len, prefix->key.s);
         if (prefix->key.len != lp)
         {
-            /* split key into prefix:suffix, move data */
+            /* split curr into prefix:suffix nodes */
             str keysuf = {
                 prefix->key.len - lp,
                 prefix->key.s + lp
             };
             node *v = prefix->val;
-            prefix->val = 0;                            /* del node[key] */
-            curr = node_set(&prefix->val, &keysuf, v);  /* node[prefix] = {keysuf:nk} */
+            prefix->val = 0;
+            curr = node_set(&prefix->val, &keysuf, v);
             prefix->key.len = lp;                       
-            printf("suffix split: keysuf=%.*s\n",
-                (unsigned)keysuf.len, keysuf.s);
-            node_dump(r->root, stdout, 1);
         }
-        word.s += lp, word.len -= lp;                   /* word = word[lp:] */
+        word.s += lp, word.len -= lp;
         curr = prefix->val;
-        printf("prefix loop curr=%p\n", curr);
-        consumed += lp;
     }
-
-    printf("prefix done curr=%p word=%.*s consumed=%zu lp=%zu\n",
-        curr, (unsigned)word.len, word.s, consumed, lp);
-    node_dump(r->root, stdout, 1);
 
     /* umatched leftovers */
     curr = node_set(&curr, &word, 0);
@@ -318,7 +313,7 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
     if (!r->root)
         r->root = curr;
 
-    /* if leftover !=, end of string */
+    /* if leftover != end of string, add EOS */
     if (word.len)
     {
         word.len = 0;
@@ -327,12 +322,6 @@ int radixtree_add(radixtree *r, const char *s, size_t len)
 
     if (!r->root)
         r->root = curr;
-
-    printf("done:\n"); node_dump(r->root, stdout, 1);
-    printf("curr:\n"); node_dump(curr, stdout, 1);
-
-    assert(r->root);
-    assert(curr);
 
     return 1;
 }
